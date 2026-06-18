@@ -4,24 +4,19 @@ const app = express();
 
 app.use(express.json());
 
-// CONFIG
+// ⚙️ GLOBAL PARAMETERS
 const AUMPFY_API_KEY = "sl_1fb665f";
 const TARGET_GROUP_ID = "120363424655127657"; 
 
-// 🔗 Your live Google Apps Script web app URL
+// 🔗 PASTE YOUR COPIED GOOGLE EXEC URL HERE:
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyby8T5B3F27QlZJ3pD6j3U3Q3nSLo8ulWHiET2yryE3kslhSHQZlU2Tf8kOr0PzWAF/exec";
 
 app.post('/guru-kripa/webhook', async (req, res) => {
     try {
         const incomingData = req.body;
-        console.log("=== NEW WEBHOOK RECEIVED ===");
+        console.log("=== NEW WEBHOOK INBOUND ===");
 
-        const eventType = incomingData.event;
-        if (eventType && eventType !== "MESSAGE_RECEIVED") {
-            return res.status(200).json({ success: true, message: "Ignored non-message event" });
-        }
-
-        // Extract message text safely
+        // Safely check message format
         let messageText = "";
         if (incomingData.data && incomingData.data.body) {
             messageText = incomingData.data.body.trim();
@@ -29,7 +24,6 @@ app.post('/guru-kripa/webhook', async (req, res) => {
             messageText = incomingData.text.trim();
         }
 
-        // Extract and clean Group ID
         let rawGroupId = "";
         if (incomingData.data && incomingData.data.from) {
             rawGroupId = incomingData.data.from;
@@ -39,59 +33,40 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         
         const cleanGroupId = rawGroupId.split('@')[0];
 
-        console.log(`Extracted Text: "${messageText}"`);
-        console.log(`Cleaned Group ID: "${cleanGroupId}"`);
+        console.log(`Extracted Text: "${messageText}" | Group: "${cleanGroupId}"`);
 
-        // Prevent loop triggers
+        // Avoid infinite looping loops
         if (messageText.includes("Stock Asset Found") || messageText.includes("was not found")) {
-            return res.status(200).json({ success: true, message: "Ignored loop" });
+            return res.status(200).json({ success: true });
         }
 
-        if (!messageText) {
-            return res.status(200).json({ success: true, message: "Empty text message ignored" });
+        if (!messageText || cleanGroupId !== TARGET_GROUP_ID) {
+            console.log("Ignored: Message empty or unauthorized chat origin group.");
+            return res.status(200).json({ success: true });
         }
 
-        // Validate Group ID
-        if (cleanGroupId !== TARGET_GROUP_ID) {
-            console.log(`Ignored: Group ${cleanGroupId} does not match target ${TARGET_GROUP_ID}`);
-            return res.status(200).json({ success: true, message: "Group mismatch" });
-        }
+        console.log(`Processing inventory search loop for item ID: ${messageText}`);
 
-        console.log(`Searching Drive for Stock Number: "${messageText}"`);
-
-        // Ask Google Drive
+        // Fetch link from script
         const driveLookup = await axios.get(`${GOOGLE_SCRIPT_URL}?stock=${encodeURIComponent(messageText)}`);
         const driveData = driveLookup.data;
-        console.log("Google Drive Response:", JSON.stringify(driveData));
+        console.log("Google Drive Script Response:", JSON.stringify(driveData));
 
-        const recipient = cleanGroupId + "@g.us";
+        const recipient = `${cleanGroupId}@g.us`;
 
         if (driveData && driveData.success) {
-            // Extract the pure file ID from Google's response link
-            let fileId = "";
-            if (driveData.imageUrl.includes("id=")) {
-                fileId = driveData.imageUrl.split("id=")[1];
-            } else if (driveData.imageUrl.includes("/d/")) {
-                fileId = driveData.imageUrl.split("/d/")[1].split("/")[0];
-            } else {
-                fileId = driveData.imageUrl;
-            }
-            
-            // Format to a clean, verifiable direct view source link
-            const verifiedDirectUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
-            console.log(`Sending streaming link back to WhatsApp: ${verifiedDirectUrl}`);
-
+            console.log("Sending photo back to WhatsApp...");
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-media`, {
                 to: recipient,
                 type: "image",
-                mediaUrl: verifiedDirectUrl,
+                mediaUrl: driveData.imageUrl,
                 caption: `✅ Stock Asset Found: ${driveData.fileName}`
             }, {
                 headers: { 'Authorization': `Bearer ${AUMPFY_API_KEY}`, 'Content-Type': 'application/json' }
             });
-            console.log("Image successfully sent to WhatsApp!");
+            console.log("🚀 Media dispatch successfully completed!");
         } else {
-            console.log(`Stock number not found.`);
+            console.log("Item not matched. Dispatching text notification...");
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-text`, {
                 to: recipient,
                 text: `❌ Stock item "${messageText}" was not found in folders.`
@@ -101,10 +76,9 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         }
 
         res.status(200).json({ success: true });
-
     } catch (error) {
-        console.error("🔴 SERVER ERROR:", error.message);
-        res.status(500).json({ success: false, error: error.message });
+        console.error("🔴 SERVER EXCEPTION ERROR:", error.message);
+        res.status(500).json({ success: false });
     }
 });
 
