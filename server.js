@@ -42,7 +42,7 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         console.log(`Extracted Text: "${messageText}"`);
         console.log(`Cleaned Group ID: "${cleanGroupId}"`);
 
-        // Prevent loops
+        // Prevent loop triggers
         if (messageText.includes("Stock Asset Found") || messageText.includes("was not found")) {
             return res.status(200).json({ success: true, message: "Ignored loop" });
         }
@@ -67,27 +67,29 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         const recipient = cleanGroupId + "@g.us";
 
         if (driveData && driveData.success) {
-            // 🛠️ FIX: Convert the Drive link to a direct streaming link format
+            // Extract the pure file ID from Google's response link
             let fileId = "";
             if (driveData.imageUrl.includes("id=")) {
                 fileId = driveData.imageUrl.split("id=")[1];
-            } else {
+            } else if (driveData.imageUrl.includes("/d/")) {
                 fileId = driveData.imageUrl.split("/d/")[1].split("/")[0];
+            } else {
+                fileId = driveData.imageUrl;
             }
             
-            const streamingImageUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
-            console.log(`Streaming Image Link Generated: ${streamingImageUrl}`);
+            // Format to a clean, verifiable direct view source link
+            const verifiedDirectUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+            console.log(`Sending streaming link back to WhatsApp: ${verifiedDirectUrl}`);
 
-            console.log(`Sending image back to WhatsApp group...`);
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-media`, {
                 to: recipient,
                 type: "image",
-                mediaUrl: streamingImageUrl,
+                mediaUrl: verifiedDirectUrl,
                 caption: `✅ Stock Asset Found: ${driveData.fileName}`
             }, {
                 headers: { 'Authorization': `Bearer ${AUMPFY_API_KEY}`, 'Content-Type': 'application/json' }
             });
-            console.log("Image sent successfully via Aumpfy!");
+            console.log("Image successfully sent to WhatsApp!");
         } else {
             console.log(`Stock number not found.`);
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-text`, {
