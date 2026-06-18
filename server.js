@@ -4,7 +4,7 @@ const app = express();
 
 app.use(express.json());
 
-// ⚙️ GLOBAL ACCESS CODES
+// ⚙️ AUTH CONFIGURATION KEYS
 const AUMPFY_API_KEY = "sl_1fb665f";
 const TARGET_GROUP_ID = "120363424655127657"; 
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyby8T5B3F27QlZJ3pD6j3U3Q3nSLo8ulWHiET2yryE3kslhSHQZlU2Tf8kOr0PzWAF/exec";
@@ -12,8 +12,9 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyby8T5B3F27Q
 app.post('/guru-kripa/webhook', async (req, res) => {
     try {
         const incomingData = req.body;
-        
-        // 1. Extract plain incoming text safely
+        console.log("=== NEW WEBHOOK RECEIVED ===");
+
+        // Extract message content safely
         let messageText = "";
         if (incomingData.data && incomingData.data.body) {
             messageText = incomingData.data.body.trim();
@@ -21,7 +22,7 @@ app.post('/guru-kripa/webhook', async (req, res) => {
             messageText = incomingData.text.trim();
         }
 
-        // 2. Extract chat room metadata group code safely
+        // Extract chat group metadata safely
         let rawGroupId = "";
         if (incomingData.data && incomingData.data.from) {
             rawGroupId = incomingData.data.from;
@@ -30,51 +31,51 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         }
         const cleanGroupId = rawGroupId.split('@')[0];
 
-        // 3. Prevent infinite system loop notifications
-        if (messageText.includes("Stock Asset") || messageText.includes("not found") || !messageText) {
+        // Break potential loops
+        if (!messageText || messageText.includes("Stock Asset") || messageText.includes("not found")) {
             return res.status(200).json({ success: true });
         }
 
-        // 4. Group Guard Validation Filter
+        // Group Filter Validation Guard
         if (cleanGroupId !== TARGET_GROUP_ID) {
+            console.log(`Ignored unauthorized chat: ${cleanGroupId}`);
             return res.status(200).json({ success: true });
         }
 
-        console.log(`Searching Drive repository for match entry: ${messageText}`);
+        console.log(`Searching catalog for item entry: "${messageText}"`);
+        const recipient = `${cleanGroupId}@g.us`;
 
-        // 5. Query Google Sheet/Drive Script macro database engine
+        // Request information from Google Script macro database
         const driveLookup = await axios.get(`${GOOGLE_SCRIPT_URL}?stock=${encodeURIComponent(messageText)}`);
         const driveData = driveLookup.data;
 
-        const recipient = `${cleanGroupId}@g.us`;
-
-        // 6. Deliver the output cleanly back to WhatsApp group
         if (driveData && driveData.success) {
-            // Sends the file information alongside its live web view link
+            // Reply back with text information + direct web view link
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-text`, {
                 to: recipient,
-                text: `✅ *Stock Asset Found!*\n📦 *Name:* ${driveData.fileName}\n🔗 *View File:* ${driveData.imageUrl}`
+                text: `✅ *Stock Asset Found!*\n📦 *Name:* ${driveData.fileName}\n🔗 *View Link:* ${driveData.imageUrl}`
             }, {
                 headers: { 'Authorization': `Bearer ${AUMPFY_API_KEY}`, 'Content-Type': 'application/json' }
             });
-            console.log("Response dispatched!");
+            console.log("Success message dispatched!");
         } else {
+            // Fallback error code dispatch response card
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-text`, {
                 to: recipient,
                 text: `❌ Stock item "${messageText}" was not found in folders.`
             }, {
                 headers: { 'Authorization': `Bearer ${AUMPFY_API_KEY}`, 'Content-Type': 'application/json' }
             });
-            console.log("Fallback alert dispatched!");
+            console.log("Fallback text alert dispatched.");
         }
 
         return res.status(200).json({ success: true });
 
     } catch (error) {
-        console.error("Internal Engine Error Loop Exception:", error.message);
+        console.error("🔴 SERVER EXCEPTION ERROR:", error.message);
         return res.status(200).json({ success: false });
     }
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`Active connection stream hosted on port: ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server listening on port ${PORT}`));
