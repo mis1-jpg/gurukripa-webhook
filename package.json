@@ -1,7 +1,7 @@
 {
   "name": "gurukripa-webhook",
   "version": "1.0.0",
-  "description": "WhatsApp Stock Lookup Bot",
+  "description": "WhatsApp Stock Bot",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
