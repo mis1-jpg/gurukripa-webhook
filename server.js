@@ -7,18 +7,18 @@ function doGet(e) {
   }
   
   try {
-    // 🔍 Deep recursive search across the main folder and all its category/N/J subfolders
-    // It filters specifically for your stock number inside the image titles
-    var searchString = "title contains '" + stockNumber + "' and mimeType contains 'image/' and trashed = false";
+    // 🔍 Searches globally across all subfolders under your main folder
+    // 'title contains' automatically catches files containing '8156' regardless of .JPG, .jpg, or .png extension
+    var searchString = "title contains '" + stockNumber + "' and trashed = false";
     var files = DriveApp.getFolderById(mainFolderId).searchFiles(searchString);
     
     if (files.hasNext()) {
       var file = files.next();
       
-      // Open up file sharing permissions so WhatsApp's servers can pull and show the image
+      // Open up file sharing permissions so WhatsApp can grab it
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       
-      // Generate the clean, direct download asset link 
+      // Direct asset link format for high-res downloading
       var directImageUrl = "https://docs.google.com/uc?export=download&id=" + file.getId();
       
       return ContentService.createTextOutput(JSON.stringify({
