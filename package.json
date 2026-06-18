@@ -1,35 +1,13 @@
-Railway deployment failed — Build Error
-
-Fix the package.json file in your repository, which contains invalid or truncated JSON. Railpack failed to parse it and reported "unexpected EOF at line 2, column 1", so the Node provider could not initialize and the build failed. This was introduced by the "Update package.json" commit, as the previous deployment built successfully.
-
-Repository: https://github.com/mis1-jpg/gurukripa-webhook
-Branch: main · Commit: 70630aa — Update package.json
-Deployment ID: 8ae0aace-5996-4b0e-a29e-53980f22a20d
-Service ID: e2016319-4ea0-4d06-bf4f-046725363051
-Environment ID: 50300d26-40d4-432d-86e6-47b9aec68c2c
-
----
-
-## Problem
-The build fails at the BUILD_IMAGE stage with Railpack error: `Failed to initialize provider 'node': error reading package.json: hujson: line 2, column 1: parsing value: unexpected EOF`. The service is a Node.js repo (mis1-jpg/gurukripa-webhook, branch main, commit 70630aa6b5c596a6b02c7186bdf6b35ec4b30df1). The snapshot succeeded but Railpack could not parse package.json.
-
-## Diagnosis
-The commit "Update package.json" introduced invalid JSON into package.json. The parser hits an unexpected end-of-file at line 2, column 1, meaning the file is likely truncated — possibly only the opening brace exists or the content was accidentally deleted. Both deployments at this commit failed with the same error. The previous deployment at commit 41933ef ("Update server.js") built successfully, confirming the regression was introduced by this specific package.json change. The repo contains only two files: package.json and server.js.
-
-## Fix
-1. Open `package.json` at the repository root.
-2. The file currently contains truncated or incomplete JSON (the parser fails at line 2, column 1 with unexpected EOF).
-3. Restore it to valid, complete JSON. At minimum it must include: opening and closing braces, a `name` field, a `version` field, a `dependencies` object listing all required npm packages, and a `scripts.start` entry if no separate start command is configured.
-4. Example minimal valid structure:
-```json
 {
   "name": "gurukripa-webhook",
   "version": "1.0.0",
+  "description": "WhatsApp Stock Lookup Bot",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.18.2"
+  }
 }
-```
-5. Commit and push the fix to the main branch. Railpack will then be able to parse package.json, initialize the Node provider, and complete the build.
