@@ -14,15 +14,14 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyby8T5B3F27Q
 app.post('/guru-kripa/webhook', async (req, res) => {
     try {
         const incomingData = req.body;
-        console.log("=== WEBHOOK RECEIVED ===");
+        console.log("=== NEW WEBHOOK RECEIVED ===");
 
-        // Extract event type safely
         const eventType = incomingData.event;
         if (eventType && eventType !== "MESSAGE_RECEIVED") {
             return res.status(200).json({ success: true, message: "Ignored non-message event" });
         }
 
-        // 🛠️ FIX 1: Extract message text from Aumpfy's 'data.body' structure
+        // Extract message text safely
         let messageText = "";
         if (incomingData.data && incomingData.data.body) {
             messageText = incomingData.data.body.trim();
@@ -30,7 +29,7 @@ app.post('/guru-kripa/webhook', async (req, res) => {
             messageText = incomingData.text.trim();
         }
 
-        // 🛠️ FIX 2: Extract and clean Group ID from Aumpfy's 'data.from' structure
+        // Extract and clean Group ID
         let rawGroupId = "";
         if (incomingData.data && incomingData.data.from) {
             rawGroupId = incomingData.data.from;
@@ -38,13 +37,12 @@ app.post('/guru-kripa/webhook', async (req, res) => {
             rawGroupId = incomingData.groupId || incomingData.chatId || "";
         }
         
-        // Remove '@g.us' or '@s.whatsapp.net' if present to isolate the raw digits
         const cleanGroupId = rawGroupId.split('@')[0];
 
         console.log(`Extracted Text: "${messageText}"`);
         console.log(`Cleaned Group ID: "${cleanGroupId}"`);
 
-        // Prevent loops by ignoring automated replies
+        // Prevent loops
         if (messageText.includes("Stock Asset Found") || messageText.includes("was not found")) {
             return res.status(200).json({ success: true, message: "Ignored loop" });
         }
@@ -66,19 +64,30 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         const driveData = driveLookup.data;
         console.log("Google Drive Response:", JSON.stringify(driveData));
 
-        // Use the proper Aumpfy destination parameter format
         const recipient = cleanGroupId + "@g.us";
 
         if (driveData && driveData.success) {
-            console.log(`Found file! Sending image back to WhatsApp...`);
+            // 🛠️ FIX: Convert the Drive link to a direct streaming link format
+            let fileId = "";
+            if (driveData.imageUrl.includes("id=")) {
+                fileId = driveData.imageUrl.split("id=")[1];
+            } else {
+                fileId = driveData.imageUrl.split("/d/")[1].split("/")[0];
+            }
+            
+            const streamingImageUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+            console.log(`Streaming Image Link Generated: ${streamingImageUrl}`);
+
+            console.log(`Sending image back to WhatsApp group...`);
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-media`, {
                 to: recipient,
                 type: "image",
-                mediaUrl: driveData.imageUrl,
+                mediaUrl: streamingImageUrl,
                 caption: `✅ Stock Asset Found: ${driveData.fileName}`
             }, {
                 headers: { 'Authorization': `Bearer ${AUMPFY_API_KEY}`, 'Content-Type': 'application/json' }
             });
+            console.log("Image sent successfully via Aumpfy!");
         } else {
             console.log(`Stock number not found.`);
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-text`, {
