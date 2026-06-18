@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 // CONFIG
-const AUMPFY_API_KEY = "YOUR_AUMPFY_API_KEY";
+const AUMPFY_API_KEY = "sl_1fb665f";
 const REPLY_IMAGE_URL = "https://your-website.com/thank-you-image.jpg";
 
 // YOUR WHATSAPP GROUP ID
