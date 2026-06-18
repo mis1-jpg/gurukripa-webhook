@@ -16,7 +16,7 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         const incomingData = req.body;
         console.log("=== NEW WEBHOOK INBOUND ===");
 
-        // 1. Extract message text safely from Waumfy's custom data format
+        // 1. Extract message text safely
         let messageText = "";
         if (incomingData.data && incomingData.data.body) {
             messageText = incomingData.data.body.trim();
@@ -24,7 +24,7 @@ app.post('/guru-kripa/webhook', async (req, res) => {
             messageText = incomingData.text.trim();
         }
 
-        // 2. Extract chat group origin id safely 
+        // 2. Extract group ID safely 
         let rawGroupId = "";
         if (incomingData.data && incomingData.data.from) {
             rawGroupId = incomingData.data.from;
@@ -35,34 +35,45 @@ app.post('/guru-kripa/webhook', async (req, res) => {
         const cleanGroupId = rawGroupId.split('@')[0];
         console.log(`Extracted Text: "${messageText}" | Group: "${cleanGroupId}"`);
 
-        // 3. Block loop triggers
+        // Block loops
         if (messageText.includes("Stock Asset Found") || messageText.includes("was not found")) {
-            console.log("Ignored: Automated bot response loop detected.");
             return res.status(200).json({ success: true });
         }
 
         if (!messageText || cleanGroupId !== TARGET_GROUP_ID) {
-            console.log("Ignored: Empty message text or unauthorized WhatsApp chat group origin.");
+            console.log("Ignored: Empty text or unauthorized group.");
             return res.status(200).json({ success: true });
         }
 
-        console.log(`Connecting to Google Drive to query item code: "${messageText}"`);
+        console.log(`Querying Google Drive for stock code: "${messageText}"`);
 
-        // 4. Contact Google Script Web App
+        // 3. Contact Google Script
         const driveLookup = await axios.get(`${GOOGLE_SCRIPT_URL}?stock=${encodeURIComponent(messageText)}`);
         const driveData = driveLookup.data;
         console.log("Google Drive Script Response:", JSON.stringify(driveData));
 
         const recipient = `${cleanGroupId}@g.us`;
 
-        // 5. If successful, pass the public image resource directly to Waumfy
         if (driveData && driveData.success) {
-            console.log("Asset located! Sending image stream back to WhatsApp...");
-            
+            // 🛠️ FIX: Extract the raw file ID from whatever link format Google Script sent back
+            let fileId = "";
+            if (driveData.imageUrl.includes("id=")) {
+                fileId = driveData.imageUrl.split("id=")[1].split("&")[0];
+            } else if (driveData.imageUrl.includes("/d/")) {
+                fileId = driveData.imageUrl.split("/d/")[1].split("/")[0];
+            } else {
+                fileId = driveData.imageUrl;
+            }
+
+            // 🛠️ This special CDN endpoint forces Google to stream the image data directly so WhatsApp can render it
+            const directStreamUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+            console.log(`Generated Direct WhatsApp View Link: ${directStreamUrl}`);
+
+            console.log("Sending clean image link to Aumpfy...");
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-media`, {
                 to: recipient,
                 type: "image",
-                mediaUrl: driveData.imageUrl,
+                mediaUrl: directStreamUrl,
                 caption: `✅ Stock Asset Found: ${driveData.fileName}`
             }, {
                 headers: { 
@@ -70,11 +81,9 @@ app.post('/guru-kripa/webhook', async (req, res) => {
                     'Content-Type': 'application/json' 
                 }
             });
-            
             console.log("🚀 Media dispatched successfully!");
         } else {
-            console.log("Asset not found. Sending text notification...");
-            
+            console.log("Asset not found. Sending fallback notification...");
             await axios.post(`https://api.aumpfy.com/api/v1/messages/send-text`, {
                 to: recipient,
                 text: `❌ Stock item "${messageText}" was not found in folders.`
@@ -90,7 +99,6 @@ app.post('/guru-kripa/webhook', async (req, res) => {
 
     } catch (error) {
         console.error("🔴 SERVER EXCEPTION ERROR:", error.message);
-        // Always respond back with a 200 to prevent Aumpfy from getting stuck in an infinite retry lock loop
         return res.status(200).json({ success: false, error: error.message });
     }
 });
