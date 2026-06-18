@@ -21,13 +21,13 @@ app.post('/guru-kripa/webhook', async (req, res) => {
             return res.status(200).json({ success: true, message: "Ignored status event update" });
         }
 
-        // 2. Prevent infinite loops (Stop the bot from responding to its own messages)
-        if (incomingData.fromMe === true) {
-            return res.status(200).json({ success: true, message: "Ignored message sent by the bot" });
-        }
-
         const messageText = (incomingData.text || "").trim(); // This extracts the stock number (e.g., 8156)
         const groupId = incomingData.groupId || incomingData.chatId || incomingData.fromGroup;
+
+        // 2. Prevent loops by ignoring the bot's own automated replies
+        if (messageText.includes("Stock Asset Found") || messageText.includes("was not found in the Nakshi/Jawadu")) {
+            return res.status(200).json({ success: true, message: "Ignored bot's own reply to avoid infinite loop" });
+        }
 
         // 3. ❌ IGNORE if NOT from your target WhatsApp group
         if (groupId !== TARGET_GROUP_ID) {
